@@ -336,6 +336,54 @@ def apply_category_style(cell, category_code: str):
     cell.font = Font(color=meta["font"])
     cell.alignment = Alignment(vertical="top", wrap_text=True)
 
+def build_anomaly_summary(anomalies: list[dict]) -> str:
+    """
+    Regroupe les anomalies similaires pour rendre le résumé plus lisible.
+
+    Exemple :
+    - Champ obligatoire manquant : Nom
+    - Champ obligatoire manquant : Prénom
+    - Champ obligatoire manquant : Email
+
+    Devient :
+    Champ obligatoire manquant : Nom / Prénom / Email
+    """
+
+    grouped = {
+        "Champ obligatoire manquant": [],
+        "Champ recommandé manquant": [],
+        "Champ sélectionné manquant": [],
+    }
+
+    other_messages = []
+
+    for anomaly in anomalies:
+        message = anomaly["message"]
+
+        matched = False
+
+        for prefix in grouped:
+            full_prefix = f"{prefix} : "
+
+            if message.startswith(full_prefix):
+                field_name = message.replace(full_prefix, "", 1).strip()
+                grouped[prefix].append(field_name)
+                matched = True
+                break
+
+        if not matched:
+            other_messages.append(message)
+
+    summary_parts = []
+
+    for prefix, fields in grouped.items():
+        if fields:
+            summary_parts.append(f"{prefix} : {' / '.join(fields)}")
+
+    summary_parts.extend(other_messages)
+
+    return ", ".join(summary_parts)
+
 
 def write_sheet_report(ws_out, errors, include_summary=True, include_detail_columns=True):
     max_missing = max((len(err["anomalies"]) for err in errors), default=0)
@@ -377,7 +425,7 @@ def write_sheet_report(ws_out, errors, include_summary=True, include_detail_colu
         ]
 
         if include_summary:
-            summary = ", ".join(anomaly_messages)
+            summary = build_anomaly_summary(err["anomalies"])
             row.append(summary)
 
         if include_detail_columns:
