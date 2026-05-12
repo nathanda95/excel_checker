@@ -428,11 +428,12 @@ class ExcelMandatoryCheckerApp:
         self.status_var = tk.StringVar(value="Prêt.")
         ttk.Label(action_frame, textvariable=self.status_var).grid(row=0, column=0, sticky="w")
 
-        ttk.Button(
+        self.run_button = ttk.Button(
             action_frame,
             text="Lancer le contrôle et générer le reporting",
             command=self.run_check
-        ).grid(row=0, column=1, sticky="e")
+        )
+        self.run_button.grid(row=0, column=1, sticky="e")
         
         self.toggle_advanced_sections(False)
 
@@ -889,24 +890,75 @@ class ExcelMandatoryCheckerApp:
             )
             return
 
+        self.show_loading_popup("Génération du reporting...")
+        self.status_var.set("Génération du reporting en cours...")
+        self.set_ui_enabled(False)
+
+        thread = threading.Thread(
+            target=self._generate_report_worker,
+            kwargs={
+                "selected_sheets": selected_sheets,
+                "header_row": header_row,
+                "selected_columns_by_sheet": selected_columns_by_sheet,
+                "email_regex": email_regex,
+                "enable_email_validation": self.enable_email_validation_var.get(),
+                "enable_length_validation": self.enable_length_validation_var.get(),
+                "enable_type_validation": self.enable_type_validation_var.get(),
+            },
+            daemon=True
+        )
+        thread.start()
+
+    def _generate_report_worker(
+        self,
+        selected_sheets,
+        header_row,
+        selected_columns_by_sheet,
+        email_regex,
+        enable_email_validation,
+        enable_length_validation,
+        enable_type_validation
+    ):
         try:
             output_path = generate_report(
                 input_file=self.file_path,
                 selected_sheets=selected_sheets,
                 header_row=header_row,
                 selected_columns_by_sheet=selected_columns_by_sheet,
-                enable_email_validation=self.enable_email_validation_var.get(),
+                enable_email_validation=enable_email_validation,
                 email_regex=email_regex,
-                enable_length_validation=self.enable_length_validation_var.get(),
-                enable_type_validation=self.enable_type_validation_var.get()
+                enable_length_validation=enable_length_validation,
+                enable_type_validation=enable_type_validation
             )
-            self.status_var.set("Reporting généré.")
-            messagebox.showinfo(
-                "Succès",
-                f"Reporting généré avec succès :\n\n{output_path}"
-            )
+
+            self.root.after(0, lambda path=output_path: self._on_report_generated(path))
+
         except Exception as e:
-            messagebox.showerror("Erreur", f"Une erreur est survenue pendant le contrôle.\n\n{e}")
+            self.root.after(0, lambda error=e: self._on_report_error(error))
+
+
+    def _on_report_generated(self, output_path):
+        self.hide_loading_popup()
+        self.set_ui_enabled(True)
+
+        self.status_var.set("Reporting généré.")
+
+        messagebox.showinfo(
+            "Succès",
+            f"Reporting généré avec succès :\n\n{output_path}"
+        )
+
+
+    def _on_report_error(self, error):
+        self.hide_loading_popup()
+        self.set_ui_enabled(True)
+
+        self.status_var.set("Erreur pendant la génération du reporting.")
+
+        messagebox.showerror(
+            "Erreur",
+            f"Une erreur est survenue pendant le contrôle.\n\n{error}"
+        )
 
     def toggle_advanced_sections(self, show: bool):
         if show:
@@ -922,6 +974,10 @@ class ExcelMandatoryCheckerApp:
 
         self.loading_popup = tk.Toplevel(self.root)
         self.loading_popup.title("Veuillez patienter")
+        try:
+            self.loading_popup.iconbitmap(self.resource_path("app2.ico"))
+        except Exception:
+            pass
         self.loading_popup.transient(self.root)
         self.loading_popup.grab_set()
         self.loading_popup.resizable(False, False)
@@ -982,6 +1038,7 @@ class ExcelMandatoryCheckerApp:
         widgets = [
             getattr(self, "sheet_listbox", None),
             getattr(self, "sheet_to_configure_combo", None),
+            getattr(self, "run_button", None),
         ]
 
         for widget in widgets:
@@ -1004,7 +1061,7 @@ class ExcelMandatoryCheckerApp:
                 recommended_count
             ))
         except Exception as e:
-            self.root.after(0, lambda: self._on_explanation_file_error(e))
+            self.root.after(0, lambda error=e: self._on_explanation_file_error(error))
 
     def _on_explanation_file_loaded(self, path, explanation_data, mandatory_count, recommended_count):
         self.explanation_file_path = path
