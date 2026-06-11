@@ -30,7 +30,7 @@ from excel_checker.utils.validation import is_email_header
 class ExcelMandatoryCheckerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Contrôle des colonnes obligatoires Excel - V1.0.0")
+        self.root.title("Contrôle des colonnes obligatoires Excel - V1.1.0")
         self.root.geometry("1450x1020")
         self.root.minsize(APP_MIN_WIDTH, APP_MIN_HEIGHT)
 
